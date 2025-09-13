@@ -1,0 +1,105 @@
+<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8" />
+    <title>LiveKit Web Client</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <style>
+      body { font-family: system-ui, Arial, sans-serif; max-width: 720px; margin: 40px auto; }
+      button { padding: 10px 16px; font-size: 16px; }
+      .log { white-space: pre-wrap; background:#f6f6f6; padding:12px; border-radius:8px; margin-top:16px; }
+    </style>
+  </head>
+  <body>
+    <h1>LiveKit Web Client</h1>
+    <p id="roomLabel">Room: (loading…)</p>
+    <button id="join">Join Room</button>
+
+    <div class="log" id="log"></div>
+
+    <script type="module">
+      import {
+        Room, RoomEvent, createLocalAudioTrack
+      } from "https://cdn.jsdelivr.net/npm/livekit-client/+esm";
+
+      // IMPORTANT: match this host with your token server AND with ALLOWED_ORIGINS in .env
+      // If you serve the page at http://localhost:8080, keep API_BASE as http://localhost:8787
+      // If you use 127.0.0.1 for the page, use 127.0.0.1 here too.
+      const API_BASE = "http://localhost:8787";
+
+      const lbl = document.getElementById("roomLabel");
+      const logEl = document.getElementById("log");
+      const log = (...args) => (logEl.textContent += args.join(" ") + "\n");
+
+      async function getRoom() {
+        try {
+          const res = await fetch(`${API_BASE}/room`);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          lbl.textContent = `Room: ${data.room}`;
+          log("GET /room →", JSON.stringify(data));
+          return data.room;
+        } catch (e) {
+          lbl.textContent = `Room: (error: ${e.message})`;
+          log("getRoom failed:", e.message);
+          throw e;
+        }
+      }
+
+      async function createSession(room) {
+        try {
+          const res = await fetch(`${API_BASE}/session`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ room }) // let backend mint token for this exact room
+          });
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          const data = await res.json();
+          log("POST /session →", JSON.stringify({ url: data.url, room: data.room, identity: data.identity }));
+          return data; // { url, room, token, identity, expires_at }
+        } catch (e) {
+          log("createSession failed:", e.message);
+          throw e;
+        }
+      }
+
+      async function joinRoom() {
+        try {
+          // 1) get canonical room name from server
+          const roomName = await getRoom();
+
+          // 2) get token + url for that room
+          const { url, room, token } = await createSession(roomName);
+          log("Connecting to:", url, "room:", room);
+
+          // 3) connect to LiveKit
+          const lkRoom = new Room();
+          await lkRoom.connect(url, token);
+          log("Connected. LiveKit room name:", lkRoom.name);
+
+          // 4) publish microphone
+          const mic = await createLocalAudioTrack();
+          await lkRoom.localParticipant.publishTrack(mic);
+          log("Mic published.");
+
+          // 5) play agent's audio (remote)
+          lkRoom.on(RoomEvent.TrackSubscribed, (_, pub) => {
+            if (pub.track.kind === "audio") {
+              document.body.appendChild(pub.track.attach());
+              log("Remote audio attached.");
+            }
+          });
+
+          lkRoom.on(RoomEvent.Disconnected, () => log("Disconnected from room."));
+        } catch (err) {
+          log("Join failed:", err.message || err);
+          console.error(err);
+        }
+      }
+
+      // show current room on page load
+      getRoom().catch(() => {});
+      document.getElementById("join").addEventListener("click", joinRoom);
+    </script>
+  </body>
+</html>
