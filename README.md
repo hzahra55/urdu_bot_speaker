@@ -12,8 +12,9 @@
 4. Start agent multiple options:
   - `python agent.py console` -> talk directly in the console
   - `python agent.py dev` -> talk through web interface 
-  terminal-1 : uvicorn token_server:app --host 0.0.0.0 --port 8787 --reload
-  terminal-2 : python agent.py dev
-  terminal-3 : go to web folder and run python -m http.server 8080
-               then open http://localhost:8080/index.html
+     - terminal-1 : uvicorn token_server:app --host 0.0.0.0 --port 8787 --reload
+     - terminal-2 : python agent.py dev
+     - terminal-3 : go to web folder and run python -m http.server 8080
+     - open http://localhost:8080/index.html
+
                
